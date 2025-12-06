@@ -1,0 +1,43 @@
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.env/
+ENV/
+*.venv/
+
+# Byte-compiled / cache
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# ---- Flask / Config ----
+instance/
+*.sqlite3
+*.db
+.env.local
+.env.*
+
+# ---- VS Code ----
+.vscode/
+.history/
+
+# ---- Operating System ----
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+
+# ---- Logs ----
+*.log
+
+# ---- Docker ----
+# Ignore local volumes or build artifacts (if any)
+docker-data/

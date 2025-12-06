@@ -1,0 +1,103 @@
+# Docker Compose - Full EMR System (with all 4 microservices)
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: emr-postgres
+    environment:
+      POSTGRES_USER: emr_user
+      POSTGRES_PASSWORD: emr_secure_password
+      POSTGRES_DB: emr_database
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - emr-network
+
+  # Data Access Service (Microservice 4)
+  data-access-service:
+    build:
+      context: ./data-access-service
+      dockerfile: Dockerfile
+    container_name: data-access-service
+    environment:
+      FLASK_ENV: development
+      DEBUG: 'True'
+      SECRET_KEY: dev-secret-key
+      JWT_SECRET_KEY: jwt-secret-key
+      DATABASE_URL: postgresql://emr_user:emr_secure_password@postgres:5432/emr_database
+      HARMONIZATION_SERVICE_URL: http://harmonization-service:5003
+      PRIVACY_SERVICE_URL: http://privacy-service:5002
+      EXTRACTION_SERVICE_URL: http://extraction-service:5001
+      FHIR_SERVER_URL: http://fhir-server:8080/fhir
+      CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+    ports:
+      - "5004:5004"
+    depends_on:
+      - postgres
+    networks:
+      - emr-network
+    command: python seed_database.py && python app.py
+    restart: unless-stopped
+
+  # Harmonization Service (Microservice 3) - Placeholder
+  harmonization-service:
+    image: python:3.11-slim
+    container_name: harmonization-service
+    environment:
+      FLASK_ENV: development
+    ports:
+      - "5003:5003"
+    networks:
+      - emr-network
+    command: echo "Harmonization Service - Port 5003"
+
+  # Privacy Service (Microservice 2) - Placeholder
+  privacy-service:
+    image: python:3.11-slim
+    container_name: privacy-service
+    environment:
+      FLASK_ENV: development
+    ports:
+      - "5002:5002"
+    networks:
+      - emr-network
+    command: echo "Privacy Service - Port 5002"
+
+  # Extraction Service (Microservice 1) - Placeholder
+  extraction-service:
+    image: python:3.11-slim
+    container_name: extraction-service
+    environment:
+      FLASK_ENV: development
+    ports:
+      - "5001:5001"
+    networks:
+      - emr-network
+    command: echo "Extraction Service - Port 5001"
+
+  # FHIR Server - Optional (for complete setup)
+  fhir-server:
+    image: hapiproject/hapi:latest
+    container_name: fhir-server
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fhir
+      SPRING_DATASOURCE_USERNAME: emr_user
+      SPRING_DATASOURCE_PASSWORD: emr_secure_password
+    depends_on:
+      - postgres
+    networks:
+      - emr-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  emr-network:
+    driver: bridge
