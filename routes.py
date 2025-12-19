@@ -1,629 +1,218 @@
-"""
-API Routes for Data Access Service
-"""
-import logging
-from flask import Blueprint, request, jsonify
-from functools import wraps
-from models import db, FHIRResource, User, AccessLog
-from auth_service import AuthService
+
+
+from flask import Blueprint, request, jsonify, current_app
+from auth_service import AuthService, token_required, role_required, permission_required
 from fhir_service import FHIRService
 from audit_service import AuditService
+from models import User, db
+import logging
 import time
 
 logger = logging.getLogger(__name__)
 
-# Create blueprints
+# Define Blueprints
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 fhir_bp = Blueprint('fhir', __name__, url_prefix='/api/fhir')
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
-health_bp = Blueprint('health', __name__, url_prefix='/api')
+health_bp = Blueprint('health', __name__, url_prefix='/health')
 
 
-# ============================================
-# DECORATORS
-# ============================================
-
-def token_required(f):
-    """Decorator to verify JWT token"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        token = None
-        
-        # Get token from Authorization header
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            try:
-                token = auth_header.split(' ')[1]  # Bearer <token>
-            except IndexError:
-                return jsonify({'error': 'Invalid token format'}), 401
-        
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
-        
-        # Verify token
-        payload = AuthService.verify_token(token)
-        if not payload:
-            return jsonify({'error': 'Invalid or expired token'}), 401
-        
-        # Get user from database
-        current_user = User.query.get(payload['user_id'])
-        if not current_user or not current_user.is_active:
-            return jsonify({'error': 'User not found or inactive'}), 401
-        
-        return f(current_user, *args, **kwargs)
-    
-    return decorated_function
-
-
-def role_required(allowed_roles):
-    """Decorator to check user role"""
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(current_user, *args, **kwargs):
-            if current_user.role not in allowed_roles:
-                return jsonify({'error': 'Insufficient permissions'}), 403
-            return f(current_user, *args, **kwargs)
-        return decorated_function
-    return decorator
-
-
-# ============================================
-# HEALTH & STATUS ENDPOINTS
-# ============================================
-
-@health_bp.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    try:
-        # Test database connection
-        db.session.execute('SELECT 1')
-        db_status = 'connected'
-    except Exception as e:
-        db_status = 'disconnected'
-        logger.error(f"Database health check failed: {str(e)}")
-    
-    return jsonify({
-        'status': 'healthy',
-        'service': 'Data Access Service',
-        'database': db_status,
-        'version': '1.0.0'
-    }), 200
-
-
+# --- Health Check ---
 @health_bp.route('/status', methods=['GET'])
-def service_status():
-    """Detailed service status"""
-    try:
-        # Get resource counts
-        patient_count = FHIRResource.query.filter_by(resource_type='Patient').count()
-        observation_count = FHIRResource.query.filter_by(resource_type='Observation').count()
-        condition_count = FHIRResource.query.filter_by(resource_type='Condition').count()
-        user_count = User.query.count()
-        
-        return jsonify({
-            'status': 'operational',
-            'database': {
-                'patients': patient_count,
-                'observations': observation_count,
-                'conditions': condition_count,
-                'users': user_count
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"Status check failed: {str(e)}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+def health_check():
+    return jsonify({'status': 'healthy', 'service': 'Data Access Service'}), 200
 
 
-# ============================================
-# AUTHENTICATION ENDPOINTS
-# ============================================
-
+# --- Authentication Routes ---
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """User login endpoint"""
-    try:
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
-        
-        if not username or not password:
-            return jsonify({'error': 'Username and password required'}), 400
-        
-        # Authenticate user
-        result = AuthService.authenticate(username, password)
-        
-        if result:
-            # Log successful login
-            AuditService.log_access(
-                user_id=result['user']['id'],
-                action='LOGIN',
-                status_code=200
-            )
-            
-            return jsonify({
-                'message': 'Login successful',
-                'tokens': result['tokens'],
-                'user': result['user']
-            }), 200
-        else:
-            return jsonify({'error': 'Invalid credentials'}), 401
-            
-    except Exception as e:
-        logger.error(f"Login failed: {str(e)}")
-        return jsonify({'error': 'Login failed'}), 500
-
-
-@auth_bp.route('/register', methods=['POST'])
-def register():
-    """User registration endpoint"""
-    try:
-        data = request.get_json()
-        
-        required_fields = ['username', 'email', 'password', 'role']
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required fields'}), 400
-        
-        # Register user
-        result = AuthService.register_user(
-            username=data['username'],
-            email=data['email'],
-            password=data['password'],
-            role=data['role'],
-            department=data.get('department')
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'error': 'Username and password required'}), 400
+    
+    result = AuthService.authenticate(data['username'], data['password'])
+    
+    if not result:
+        # Log failed attempt
+        AuditService.log_access(
+            user_id=None, 
+            action='LOGIN_FAILED', 
+            status_code=401,
+            error_message=f"Failed login for {data.get('username')}"
         )
-        
-        return jsonify({
-            'message': 'User registered successfully',
-            'user': result
-        }), 201
-        
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        logger.error(f"Registration failed: {str(e)}")
-        return jsonify({'error': 'Registration failed'}), 500
-
-
-@auth_bp.route('/verify', methods=['GET'])
-@token_required
-def verify_token(current_user):
-    """Verify if token is valid"""
-    return jsonify({
-        'valid': True,
-        'user': {
-            'user_id': current_user.id,
-            'username': current_user.username,
-            'role': current_user.role
-        }
-    }), 200
-
+        return jsonify({'error': 'Invalid credentials'}), 401
+    
+    # Log success
+    AuditService.log_access(
+        user_id=result['user']['id'], 
+        action='LOGIN_SUCCESS', 
+        status_code=200
+    )
+    
+    return jsonify(result), 200
 
 @auth_bp.route('/logout', methods=['POST'])
 @token_required
-def logout(current_user):
-    """Logout user and blacklist token"""
+def logout():
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        token = auth_header.split(" ")[1]
+        AuthService.revoke_token(token, request.user_id)
+        
+    AuditService.log_access(user_id=request.user_id, action='LOGOUT', status_code=200)
+    return jsonify({'message': 'Logged out successfully'}), 200
+
+@auth_bp.route('/register', methods=['POST'])
+def register():
+    # Only allow registration in dev mode or via specific flow (simplified here)
+    data = request.get_json()
     try:
-        token = request.headers['Authorization'].split(' ')[1]
-        AuthService.revoke_token(token, current_user.id)
-        
-        # Log logout
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='LOGOUT',
-            status_code=200
+        user = AuthService.register_user(
+            username=data.get('username'),
+            email=data.get('email'),
+            password=data.get('password'),
+            role=data.get('role', 'VIEWER'),
+            department=data.get('department')
         )
-        
-        return jsonify({'message': 'Logged out successfully'}), 200
+        return jsonify(user), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Logout failed: {str(e)}")
-        return jsonify({'error': 'Logout failed'}), 500
+        return jsonify({'error': 'Registration failed'}), 500
 
 
-# ============================================
-# FHIR PATIENT ENDPOINTS
-# ============================================
+# --- FHIR Routes ---
 
 @fhir_bp.route('/Patient', methods=['GET'])
 @token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER'])
-def search_patients(current_user):
-    """Search for patients with filters"""
+@permission_required('Patient', 'READ')
+def search_patients():
+    start_time = time.time()
     try:
-        # Get query parameters
-        name = request.args.get('name')
-        gender = request.args.get('gender')
-        birthdate = request.args.get('birthdate')
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
+        filters = request.args.to_dict()
+        user_id = request.user_id
         
-        # Start with base query
-        query = FHIRResource.query.filter_by(resource_type='Patient')
-        
-        # Apply simple filters
-        if gender:
-            # Filter using JSONB
-            query = query.filter(
-                FHIRResource.data['gender'].astext == gender
-            )
-        
-        if birthdate:
-            query = query.filter(
-                FHIRResource.data['birthDate'].astext == birthdate
-            )
-        
-        # Count total
-        total = query.count()
-        
-        # Apply pagination
-        offset = (page - 1) * per_page
-        resources = query.offset(offset).limit(per_page).all()
-        
-        # Extract data and filter by name in Python if needed
-        result_data = []
-        for resource in resources:
-            data = resource.data
+        # Security: Enforce "Own Data Only"
+        if getattr(request, 'own_data_only', False):
+            user = User.query.get(user_id)
+            if not user or not user.fhir_patient_id:
+                return jsonify({'error': 'User not linked to a patient record'}), 403
             
-            # Apply name filter in Python
-            if name:
-                patient_names = data.get('name', [])
-                name_match = False
-                for name_obj in patient_names:
-                    given = ' '.join(name_obj.get('given', []))
-                    family = name_obj.get('family', '')
-                    full_name = f"{given} {family}".lower()
-                    if name.lower() in full_name:
-                        name_match = True
-                        break
-                if not name_match:
-                    continue
-            
-            result_data.append(data)
+            # Force the filter to the user's patient ID
+            filters['patient_fhir_id'] = user.fhir_patient_id
         
-        # Log the access
+        # Pagination
+        limit = int(request.args.get('_count', 20))
+        offset = int(request.args.get('_offset', 0))
+        
+        result = FHIRService.search_resources('Patient', filters, limit, offset)
+        
         AuditService.log_access(
-            user_id=current_user.id,
+            user_id=user_id,
             action='SEARCH',
             resource_type='Patient',
-            status_code=200
+            status_code=200,
+            response_time_ms=(time.time() - start_time) * 1000
         )
         
-        return jsonify({
-            'resources': result_data,
-            'total': len(result_data) if name else total,
-            'page': page,
-            'per_page': per_page
-        }), 200
+        return jsonify(result), 200
         
     except Exception as e:
-        logger.error(f"Patient search failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='SEARCH',
-            resource_type='Patient',
-            status_code=500,
-            error_message=str(e)
-        )
-        
-        return jsonify({'error': 'Search failed', 'details': str(e)}), 500
+        logger.error(f"Error searching patients: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
-@fhir_bp.route('/Patient/<string:patient_id>', methods=['GET'])
+@fhir_bp.route('/Patient/<patient_id>', methods=['GET'])
 @token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER', 'PATIENT'])
-def get_patient(current_user, patient_id):
-    """Get specific patient by ID"""
+@permission_required('Patient', 'READ')
+def get_patient(patient_id):
+    start_time = time.time()
     try:
-        resource = FHIRResource.query.filter_by(
-            resource_type='Patient',
-            fhir_id=patient_id
-        ).first()
-        
-        if not resource:
-            return jsonify({'error': 'Patient not found'}), 404
-        
-        # Log the access
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='READ',
-            resource_type='Patient',
-            fhir_id=patient_id,
-            patient_fhir_id=patient_id,
-            status_code=200
-        )
-        
-        return jsonify(resource.data), 200
-        
-    except Exception as e:
-        logger.error(f"Get patient failed: {str(e)}")
-        return jsonify({'error': 'Failed to retrieve patient'}), 500
+        # Security: Enforce "Own Data Only"
+        if getattr(request, 'own_data_only', False):
+            user = User.query.get(request.user_id)
+            if not user.fhir_patient_id or user.fhir_patient_id != patient_id:
+                AuditService.log_access(
+                    user_id=request.user_id,
+                    action='READ_DENIED',
+                    resource_type='Patient',
+                    fhir_id=patient_id,
+                    status_code=403,
+                    error_message="Attempted to access other patient's data"
+                )
+                return jsonify({'error': 'Access denied to this patient record'}), 403
 
-
-# ============================================
-# FHIR OBSERVATION ENDPOINTS
-# ============================================
-
-@fhir_bp.route('/Observation', methods=['GET'])
-@token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER'])
-def search_observations(current_user):
-    """Search for observations with filters"""
-    try:
-        patient = request.args.get('patient')
-        code = request.args.get('code')
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
-        
-        # Build query
-        query = FHIRResource.query.filter_by(resource_type='Observation')
-        
-        # Filter by patient if provided
-        if patient:
-            query = query.filter(FHIRResource.patient_fhir_id == patient)
-        
-        # Count and paginate
-        total = query.count()
-        offset = (page - 1) * per_page
-        resources = query.offset(offset).limit(per_page).all()
-        
-        # Extract data and filter by code if needed
-        result_data = []
-        for resource in resources:
-            data = resource.data
-            
-            # Filter by code in Python
-            if code:
-                code_data = data.get('code', {})
-                code_text = code_data.get('text', '')
-                if code.lower() not in code_text.lower():
-                    continue
-            
-            result_data.append(data)
-        
-        # Log the access
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='SEARCH',
-            resource_type='Observation',
-            patient_fhir_id=patient,
-            status_code=200
-        )
-        
-        return jsonify({
-            'resources': result_data,
-            'total': len(result_data) if code else total,
-            'page': page,
-            'per_page': per_page
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Observation search failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': 'Search failed', 'details': str(e)}), 500
-
-
-@fhir_bp.route('/Observation/<string:observation_id>', methods=['GET'])
-@token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER'])
-def get_observation(current_user, observation_id):
-    """Get specific observation by ID"""
-    try:
-        resource = FHIRResource.query.filter_by(
-            resource_type='Observation',
-            fhir_id=observation_id
-        ).first()
-        
-        if not resource:
-            return jsonify({'error': 'Observation not found'}), 404
-        
-        # Log the access
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='READ',
-            resource_type='Observation',
-            fhir_id=observation_id,
-            patient_fhir_id=resource.patient_fhir_id,
-            status_code=200
-        )
-        
-        return jsonify(resource.data), 200
-        
-    except Exception as e:
-        logger.error(f"Get observation failed: {str(e)}")
-        return jsonify({'error': 'Failed to retrieve observation'}), 500
-
-
-# ============================================
-# FHIR CONDITION ENDPOINTS
-# ============================================
-
-@fhir_bp.route('/Condition', methods=['GET'])
-@token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER'])
-def search_conditions(current_user):
-    """Search for conditions with filters"""
-    try:
-        patient = request.args.get('patient')
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
-        
-        # Build query
-        query = FHIRResource.query.filter_by(resource_type='Condition')
-        
-        # Filter by patient
-        if patient:
-            query = query.filter(FHIRResource.patient_fhir_id == patient)
-        
-        # Count and paginate
-        total = query.count()
-        offset = (page - 1) * per_page
-        resources = query.offset(offset).limit(per_page).all()
-        
-        # Extract data
-        result_data = [resource.data for resource in resources]
-        
-        # Log the access
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='SEARCH',
-            resource_type='Condition',
-            patient_fhir_id=patient,
-            status_code=200
-        )
-        
-        return jsonify({
-            'resources': result_data,
-            'total': total,
-            'page': page,
-            'per_page': per_page
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Condition search failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': 'Search failed', 'details': str(e)}), 500
-
-
-@fhir_bp.route('/Condition/<string:condition_id>', methods=['GET'])
-@token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER'])
-def get_condition(current_user, condition_id):
-    """Get specific condition by ID"""
-    try:
-        resource = FHIRResource.query.filter_by(
-            resource_type='Condition',
-            fhir_id=condition_id
-        ).first()
-        
-        if not resource:
-            return jsonify({'error': 'Condition not found'}), 404
-        
-        # Log the access
-        AuditService.log_access(
-            user_id=current_user.id,
-            action='READ',
-            resource_type='Condition',
-            fhir_id=condition_id,
-            patient_fhir_id=resource.patient_fhir_id,
-            status_code=200
-        )
-        
-        return jsonify(resource.data), 200
-        
-    except Exception as e:
-        logger.error(f"Get condition failed: {str(e)}")
-        return jsonify({'error': 'Failed to retrieve condition'}), 500
-
-
-# ============================================
-# FHIR BUNDLE ENDPOINT
-# ============================================
-
-@fhir_bp.route('/Patient/<string:patient_id>/Bundle', methods=['GET'])
-@token_required
-@role_required(['ADMIN', 'DOCTOR', 'NURSE', 'VIEWER'])
-def get_patient_bundle(current_user, patient_id):
-    """Get complete patient bundle with all related resources"""
-    try:
+        # Get Full Bundle
         bundle = FHIRService.get_patient_bundle(patient_id)
         
         if not bundle:
             return jsonify({'error': 'Patient not found'}), 404
-        
-        # Log the access
+            
         AuditService.log_access(
-            user_id=current_user.id,
+            user_id=request.user_id,
             action='READ',
-            resource_type='Bundle',
-            patient_fhir_id=patient_id,
-            status_code=200
+            resource_type='Patient',
+            fhir_id=patient_id,
+            status_code=200,
+            response_time_ms=(time.time() - start_time) * 1000
         )
         
         return jsonify(bundle), 200
         
     except Exception as e:
-        logger.error(f"Get patient bundle failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': 'Failed to retrieve patient bundle'}), 500
+        logger.error(f"Error retrieving patient: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
-# ============================================
-# ADMIN ENDPOINTS
-# ============================================
+@fhir_bp.route('/Observation', methods=['GET'])
+@token_required
+@permission_required('Observation', 'READ')
+def search_observations():
+    start_time = time.time()
+    try:
+        filters = request.args.to_dict()
+        
+        # Security: Enforce "Own Data Only"
+        if getattr(request, 'own_data_only', False):
+            user = User.query.get(request.user_id)
+            if not user.fhir_patient_id:
+                return jsonify({'error': 'User not linked to a patient record'}), 403
+            filters['patient_fhir_id'] = user.fhir_patient_id
+            
+        limit = int(request.args.get('_count', 20))
+        offset = int(request.args.get('_offset', 0))
+        
+        result = FHIRService.search_resources('Observation', filters, limit, offset)
+        
+        AuditService.log_access(
+            user_id=request.user_id,
+            action='SEARCH',
+            resource_type='Observation',
+            status_code=200
+        )
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
+
+# --- Admin Routes ---
 @admin_bp.route('/audit-logs', methods=['GET'])
 @token_required
-@role_required(['ADMIN'])
-def get_audit_logs(current_user):
-    """Get audit logs (admin only)"""
+@role_required('ADMIN')
+def get_audit_logs():
     try:
-        limit = int(request.args.get('limit', 50))
-        offset = int(request.args.get('offset', 0))
-        
-        logs = AccessLog.query.order_by(
-            AccessLog.created_at.desc()
-        ).offset(offset).limit(limit).all()
-        
-        result = []
-        for log in logs:
-            result.append({
-                'id': log.id,
-                'user_id': log.user_id,
-                'action': log.action,
-                'resource_type': log.resource_type,
-                'fhir_id': log.fhir_id,
-                'patient_fhir_id': log.patient_fhir_id,
-                'status_code': log.status_code,
-                'ip_address': log.ip_address,
-                'created_at': log.created_at.isoformat() if log.created_at else None
-            })
-        
-        return jsonify({
-            'logs': result,
-            'total': len(result)
-        }), 200
-        
+        logs = AuditService.get_access_logs(
+            user_id=request.args.get('user_id'),
+            resource_type=request.args.get('resource_type')
+        )
+        return jsonify(logs), 200
     except Exception as e:
-        logger.error(f"Get audit logs failed: {str(e)}")
-        return jsonify({'error': 'Failed to retrieve audit logs'}), 500
+        return jsonify({'error': str(e)}), 500
 
-
-@admin_bp.route('/user-activity/<int:user_id>', methods=['GET'])
+@admin_bp.route('/users', methods=['GET'])
 @token_required
-@role_required(['ADMIN'])
-def get_user_activity(current_user, user_id):
-    """Get activity logs for specific user (admin only)"""
-    try:
-        limit = int(request.args.get('limit', 50))
-        
-        logs = AccessLog.query.filter_by(
-            user_id=user_id
-        ).order_by(
-            AccessLog.created_at.desc()
-        ).limit(limit).all()
-        
-        result = []
-        for log in logs:
-            result.append({
-                'id': log.id,
-                'action': log.action,
-                'resource_type': log.resource_type,
-                'fhir_id': log.fhir_id,
-                'status_code': log.status_code,
-                'created_at': log.created_at.isoformat() if log.created_at else None
-            })
-        
-        return jsonify({
-            'user_id': user_id,
-            'activity': result,
-            'total': len(result)
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Get user activity failed: {str(e)}")
-        return jsonify({'error': 'Failed to retrieve user activity'}), 500
+@role_required('ADMIN')
+def get_users():
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users]), 200

@@ -3,9 +3,9 @@
 ### ============================================
 
 @baseUrl = http://localhost:5004
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiQURNSU4iLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzY1MDAwNjk5LCJleHAiOjE3NjUwMDQyOTl9.Xd5nOS_J-uLA_vqoKRzxME79J_iUV4RdlP1eW7_2-xA
 
-### ============================================
+
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiQURNSU4iLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoiYzZjNTBmYzEtOTYwMi00N2E0LTg3MjktNWMwYTVjNDhiNDJlIiwiaWF0IjoxNzY2MTIzOTQwLCJleHAiOjE3NjYyMTAzNDB9.DHOiieLQtgRutdDYpLmGJqr1flzVgF3gr06e0oO0Qqk
 ### 1. HEALTH & STATUS CHECKS
 ### ============================================
 
@@ -185,3 +185,9 @@ Content-Type: application/json
   "role": "NURSE",
   "department": "Emergency"
 }
+
+
+
+
+
+

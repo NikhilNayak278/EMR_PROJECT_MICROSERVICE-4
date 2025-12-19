@@ -1,16 +1,19 @@
-# Audit and Logging Service
-import json
+"""
+Audit and Logging Service
+"""
 import logging
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 from flask import request
 from models import AccessLog, db
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
 
 class AuditService:
     """Handle audit logging for all data access"""
-    
+   
     @staticmethod
     def log_access(
         user_id,
@@ -27,10 +30,10 @@ class AuditService:
         Called after every API request
         """
         try:
-            ip_address = request.remote_addr
-            user_agent = request.headers.get('User-Agent', '')
-            query_params = json.dumps(dict(request.args)) if request.args else None
-            
+            ip_address = request.remote_addr if request else None
+            user_agent = request.headers.get('User-Agent', '') if request else None
+            query_params = json.dumps(dict(request.args)) if request and request.args else None
+           
             access_log = AccessLog(
                 user_id=user_id,
                 resource_type=resource_type,
@@ -45,59 +48,58 @@ class AuditService:
                 error_message=error_message,
                 created_at=datetime.utcnow()
             )
-            
+           
             db.session.add(access_log)
             db.session.commit()
-            
+           
             logger.info(
                 f"Audit log: User {user_id} performed {action} on "
                 f"{resource_type}:{fhir_id} - Status: {status_code}"
             )
-            
+           
         except Exception as e:
             logger.error(f"Error logging access: {str(e)}")
             db.session.rollback()
-    
+   
     @staticmethod
-    def get_access_logs(user_id=None, resource_type=None, limit=100):
+    def get_access_logs(user_id=None, resource_type=None, limit=100, offset=0):
         """Retrieve access logs for audit purposes (Admin only)"""
         try:
             query = AccessLog.query
-            
+           
             if user_id:
                 query = query.filter_by(user_id=user_id)
-            
+           
             if resource_type:
                 query = query.filter_by(resource_type=resource_type)
-            
-            logs = query.order_by(AccessLog.created_at.desc()).limit(limit).all()
-            
+           
+            logs = query.order_by(AccessLog.created_at.desc()).offset(offset).limit(limit).all()
+           
             return [log.to_dict() for log in logs]
-            
+           
         except Exception as e:
             logger.error(f"Error retrieving access logs: {str(e)}")
             return []
-    
+   
     @staticmethod
     def get_user_activity(user_id, days=30):
         """Get activity summary for a specific user"""
         try:
-            from datetime import timedelta
-            from sqlalchemy import func
-            
             since = datetime.utcnow() - timedelta(days=days)
-            
+           
             activity = AccessLog.query.filter(
                 AccessLog.user_id == user_id,
                 AccessLog.created_at >= since
             ).all()
-            
+           
             # Group by action
             summary = {}
             for log in activity:
                 action = log.action
-                summary[action] = summary.get(action, 0) + 1
-            
+                if action not in summary:
+                    summary[action] = 0
+                summary[action] += 1
+           
             return {
                 'user_id': user_id,
                 'period_days': days,
@@ -105,17 +107,15 @@ class AuditService:
                 'actions': summary,
                 'last_activity': activity[0].created_at.isoformat() if activity else None
             }
-            
+           
         except Exception as e:
             logger.error(f"Error getting user activity: {str(e)}")
             return None
-    
+   
     @staticmethod
     def cleanup_old_logs(days_to_keep=90):
         """Remove old audit logs to manage database size"""
         try:
-            from datetime import timedelta
-            
             cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
             
             deleted_count = AccessLog.query.filter(
@@ -123,11 +123,12 @@ class AuditService:
             ).delete()
             
             db.session.commit()
-            logger.info(f"Cleaned up {deleted_count} old audit logs")
+            
+            logger.info(f"Cleaned up {deleted_count} old audit logs (older than {days_to_keep} days)")
             
             return deleted_count
             
         except Exception as e:
-            logger.error(f"Error cleaning up logs: {str(e)}")
+            logger.error(f"Error cleaning up old logs: {str(e)}")
             db.session.rollback()
             return 0
