@@ -1,27 +1,198 @@
-### ============================================
-### DATA ACCESS SERVICE - API TESTING
-### ============================================
+# ### ============================================
+# ### DATA ACCESS SERVICE - API TESTING
+# ### ============================================
 
-@baseUrl = http://localhost:5004
-
-
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiQURNSU4iLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoiYzZjNTBmYzEtOTYwMi00N2E0LTg3MjktNWMwYTVjNDhiNDJlIiwiaWF0IjoxNzY2MTIzOTQwLCJleHAiOjE3NjYyMTAzNDB9.DHOiieLQtgRutdDYpLmGJqr1flzVgF3gr06e0oO0Qqk
-### 1. HEALTH & STATUS CHECKS
-### ============================================
-
-### Health Check
-GET {{baseUrl}}/api/health
-
-### Service Status
-GET {{baseUrl}}/api/status
+# @baseUrl = http://localhost:5004
 
 
-### ============================================
-### 2. AUTHENTICATION ENDPOINTS
-### ============================================
+# @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiQURNSU4iLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoiYzZjNTBmYzEtOTYwMi00N2E0LTg3MjktNWMwYTVjNDhiNDJlIiwiaWF0IjoxNzY2MTIzOTQwLCJleHAiOjE3NjYyMTAzNDB9.DHOiieLQtgRutdDYpLmGJqr1flzVgF3gr06e0oO0Qqk
+# ### 1. HEALTH & STATUS CHECKS
+# ### ============================================
 
-### Login as Admin
-POST {{baseUrl}}/api/auth/login
+# ### Health Check
+# GET {{baseUrl}}/api/health
+
+# ### Service Status
+# GET {{baseUrl}}/api/status
+
+
+# ### ============================================
+# ### 2. AUTHENTICATION ENDPOINTS
+# ### ============================================
+
+# ### Login as Admin
+# POST {{baseUrl}}/api/auth/login
+# Content-Type: application/json
+
+# {
+#   "username": "admin",
+#   "password": "admin123"
+# }
+
+# ### Login as Doctor
+# POST {{baseUrl}}/api/auth/login
+# Content-Type: application/json
+
+# {
+#   "username": "doctor1",
+#   "password": "doctor123"
+# }
+
+# ### Login as Nurse
+# POST {{baseUrl}}/api/auth/login
+# Content-Type: application/json
+
+# {
+#   "username": "nurse1",
+#   "password": "nurse123"
+# }
+
+# ### Login as Patient
+# POST {{baseUrl}}/api/auth/login
+# Content-Type: application/json
+
+# {
+#   "username": "patient1",
+#   "password": "patient123"
+# }
+
+# ### Verify Token
+# GET {{baseUrl}}/api/auth/verify
+# Authorization: Bearer {{token}}
+
+# ### Logout
+# POST {{baseUrl}}/api/auth/logout
+# Authorization: Bearer {{token}}
+
+
+# ### ============================================
+# ### 3. FHIR PATIENT ENDPOINTS
+# ### ============================================
+
+# ### Get All Patients
+# GET {{baseUrl}}/api/fhir/Patient
+# Authorization: Bearer {{token}}
+
+# ### Get Specific Patient
+# GET {{baseUrl}}/api/fhir/Patient/pat-001
+# Authorization: Bearer {{token}}
+
+# ### Search Patients by Name
+# GET {{baseUrl}}/api/fhir/Patient?name=John
+# Authorization: Bearer {{token}}
+
+# ### Search Patients by Gender
+# GET {{baseUrl}}/api/fhir/Patient?gender=male
+# Authorization: Bearer {{token}}
+
+# ### Get Patient with Pagination
+# GET {{baseUrl}}/api/fhir/Patient?page=1&per_page=2
+# Authorization: Bearer {{token}}
+
+
+# ### ============================================
+# ### 4. FHIR OBSERVATION ENDPOINTS
+# ### ============================================
+
+# ### Get All Observations
+# GET {{baseUrl}}/api/fhir/Observation
+# Authorization: Bearer {{token}}
+
+# ### Get Specific Observation
+# GET {{baseUrl}}/api/fhir/Observation/obs-001
+# Authorization: Bearer {{token}}
+
+# ### Get Observations for Specific Patient
+# GET {{baseUrl}}/api/fhir/Observation?patient=pat-001
+# Authorization: Bearer {{token}}
+
+# ### Search Observations by Code
+# GET {{baseUrl}}/api/fhir/Observation?code=Blood%20Pressure
+# Authorization: Bearer {{token}}
+
+
+# ### ============================================
+# ### 5. FHIR CONDITION ENDPOINTS
+# ### ============================================
+
+# ### Get All Conditions
+# GET {{baseUrl}}/api/fhir/Condition
+# Authorization: Bearer {{token}}
+
+# ### Get Specific Condition
+# GET {{baseUrl}}/api/fhir/Condition/cond-001
+# Authorization: Bearer {{token}}
+
+# ### Get Conditions for Specific Patient
+# GET {{baseUrl}}/api/fhir/Condition?patient=pat-001
+# Authorization: Bearer {{token}}
+
+
+# ### ============================================
+# ### 6. FHIR BUNDLE ENDPOINT
+# ### ============================================
+
+# ### Get Complete Patient Bundle (All data for one patient)
+# GET {{baseUrl}}/api/fhir/Patient/pat-001/Bundle
+# Authorization: Bearer {{token}}
+
+
+# ### ============================================
+# ### 7. ADMIN ENDPOINTS (Requires ADMIN role)
+# ### ============================================
+
+# ### Get Audit Logs (Last 10)
+# GET {{baseUrl}}/api/admin/audit-logs?limit=10
+# Authorization: Bearer {{token}}
+
+# ### Get Audit Logs (Last 50)
+# GET {{baseUrl}}/api/admin/audit-logs?limit=50
+# Authorization: Bearer {{token}}
+
+# ### Get User Activity for User ID 1
+# GET {{baseUrl}}/api/admin/user-activity/1
+# Authorization: Bearer {{token}}
+
+# ### Get User Activity for User ID 2
+# GET {{baseUrl}}/api/admin/user-activity/2
+# Authorization: Bearer {{token}}
+
+
+# ### ============================================
+# ### 8. REGISTER NEW USER (Optional)
+# ### ============================================
+
+# ### Register New Doctor
+# POST {{baseUrl}}/api/auth/register
+# Content-Type: application/json
+
+# {
+#   "username": "doctor2",
+#   "email": "doctor2@emr.com",
+#   "password": "doctor234",
+#   "role": "DOCTOR",
+#   "department": "Cardiology"
+# }
+
+# ### Register New Nurse
+# POST {{baseUrl}}/api/auth/register
+# Content-Type: application/json
+
+# {
+#   "username": "nurse2",
+#   "email": "nurse2@emr.com",
+#   "password": "nurse234",
+#   "role": "NURSE",
+#   "department": "Emergency"
+# }
+
+
+
+
+
+
+### 1) Login and get JWT token
+POST http://localhost:5004/api/auth/login
 Content-Type: application/json
 
 {
@@ -29,165 +200,28 @@ Content-Type: application/json
   "password": "admin123"
 }
 
-### Login as Doctor
-POST {{baseUrl}}/api/auth/login
-Content-Type: application/json
+###
+
+# After running the login request, copy the access_token from the response
+# and paste it into the Authorization header below.
+
+### 2) Ingest a Patient resource
+POST http://localhost:5004/api/fhir/ingest
+Content-Type: application/fhir+json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiQURNSU4iLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoiNTk5YTllMDItNWZhMy00NGY0LTg1NGUtOWI3YTJlNmVkZmE3IiwiaWF0IjoxNzY2MTI1MTg5LCJleHAiOjE3NjYyMTE1ODl9.zsW2ZA-4x1O9_8ZE1t-fs4S9E0PQAVCts8OvYxnFHkQ
 
 {
-  "username": "doctor1",
-  "password": "doctor123"
+  "resourceType": "Patient",
+  "id": "patient-123",
+  "name": [
+    { "use": "official", "family": "Doe", "given": ["John"] }
+  ],
+  "gender": "male",
+  "birthDate": "1980-01-01"
 }
 
-### Login as Nurse
-POST {{baseUrl}}/api/auth/login
-Content-Type: application/json
+###
 
-{
-  "username": "nurse1",
-  "password": "nurse123"
-}
-
-### Login as Patient
-POST {{baseUrl}}/api/auth/login
-Content-Type: application/json
-
-{
-  "username": "patient1",
-  "password": "patient123"
-}
-
-### Verify Token
-GET {{baseUrl}}/api/auth/verify
-Authorization: Bearer {{token}}
-
-### Logout
-POST {{baseUrl}}/api/auth/logout
-Authorization: Bearer {{token}}
-
-
-### ============================================
-### 3. FHIR PATIENT ENDPOINTS
-### ============================================
-
-### Get All Patients
-GET {{baseUrl}}/api/fhir/Patient
-Authorization: Bearer {{token}}
-
-### Get Specific Patient
-GET {{baseUrl}}/api/fhir/Patient/pat-001
-Authorization: Bearer {{token}}
-
-### Search Patients by Name
-GET {{baseUrl}}/api/fhir/Patient?name=John
-Authorization: Bearer {{token}}
-
-### Search Patients by Gender
-GET {{baseUrl}}/api/fhir/Patient?gender=male
-Authorization: Bearer {{token}}
-
-### Get Patient with Pagination
-GET {{baseUrl}}/api/fhir/Patient?page=1&per_page=2
-Authorization: Bearer {{token}}
-
-
-### ============================================
-### 4. FHIR OBSERVATION ENDPOINTS
-### ============================================
-
-### Get All Observations
-GET {{baseUrl}}/api/fhir/Observation
-Authorization: Bearer {{token}}
-
-### Get Specific Observation
-GET {{baseUrl}}/api/fhir/Observation/obs-001
-Authorization: Bearer {{token}}
-
-### Get Observations for Specific Patient
-GET {{baseUrl}}/api/fhir/Observation?patient=pat-001
-Authorization: Bearer {{token}}
-
-### Search Observations by Code
-GET {{baseUrl}}/api/fhir/Observation?code=Blood%20Pressure
-Authorization: Bearer {{token}}
-
-
-### ============================================
-### 5. FHIR CONDITION ENDPOINTS
-### ============================================
-
-### Get All Conditions
-GET {{baseUrl}}/api/fhir/Condition
-Authorization: Bearer {{token}}
-
-### Get Specific Condition
-GET {{baseUrl}}/api/fhir/Condition/cond-001
-Authorization: Bearer {{token}}
-
-### Get Conditions for Specific Patient
-GET {{baseUrl}}/api/fhir/Condition?patient=pat-001
-Authorization: Bearer {{token}}
-
-
-### ============================================
-### 6. FHIR BUNDLE ENDPOINT
-### ============================================
-
-### Get Complete Patient Bundle (All data for one patient)
-GET {{baseUrl}}/api/fhir/Patient/pat-001/Bundle
-Authorization: Bearer {{token}}
-
-
-### ============================================
-### 7. ADMIN ENDPOINTS (Requires ADMIN role)
-### ============================================
-
-### Get Audit Logs (Last 10)
-GET {{baseUrl}}/api/admin/audit-logs?limit=10
-Authorization: Bearer {{token}}
-
-### Get Audit Logs (Last 50)
-GET {{baseUrl}}/api/admin/audit-logs?limit=50
-Authorization: Bearer {{token}}
-
-### Get User Activity for User ID 1
-GET {{baseUrl}}/api/admin/user-activity/1
-Authorization: Bearer {{token}}
-
-### Get User Activity for User ID 2
-GET {{baseUrl}}/api/admin/user-activity/2
-Authorization: Bearer {{token}}
-
-
-### ============================================
-### 8. REGISTER NEW USER (Optional)
-### ============================================
-
-### Register New Doctor
-POST {{baseUrl}}/api/auth/register
-Content-Type: application/json
-
-{
-  "username": "doctor2",
-  "email": "doctor2@emr.com",
-  "password": "doctor234",
-  "role": "DOCTOR",
-  "department": "Cardiology"
-}
-
-### Register New Nurse
-POST {{baseUrl}}/api/auth/register
-Content-Type: application/json
-
-{
-  "username": "nurse2",
-  "email": "nurse2@emr.com",
-  "password": "nurse234",
-  "role": "NURSE",
-  "department": "Emergency"
-}
-
-
-
-
-
-
+### 3) (Optional) Check that Patient appears via GET
+GET http://localhost:5004/api/fhir/Patient?_count=10&_offset=0
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiQURNSU4iLCJ0eXBlIjoiYWNjZXNzIiwianRpIjoiNTk5YTllMDItNWZhMy00NGY0LTg1NGUtOWI3YTJlNmVkZmE3IiwiaWF0IjoxNzY2MTI1MTg5LCJleHAiOjE3NjYyMTE1ODl9.zsW2ZA-4x1O9_8ZE1t-fs4S9E0PQAVCts8OvYxnFHkQ
