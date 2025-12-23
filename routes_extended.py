@@ -51,6 +51,158 @@ def permission_required(resource_type, action):
     return decorator
 
 
+# ===== AUTHENTICATION ENDPOINTS =====
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """POST /api/auth/login - Login user and get JWT tokens"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return {'error': 'No data provided'}, 400
+        
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return {'error': 'Username and password required'}, 400
+        
+        # Authenticate user
+        user = AuthService.authenticate(username, password)
+        
+        if not user:
+            AuditService.log_access(None, 'LOGIN', None, None, status_code=401, error_message='Invalid credentials')
+            return {'error': 'Invalid username or password'}, 401
+        
+        # Generate tokens
+        tokens = AuthService.generate_tokens(user.id, user.role)
+        
+        # Log successful login
+        AuditService.log_access(user.id, 'LOGIN', None, None, status_code=200)
+        
+        return {
+            'success': True,
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': user.role,
+                'fhir_patient_id': user.fhir_patient_id
+            }
+        }, 200
+        
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        return {'error': f'Login failed: {str(e)}'}, 500
+
+
+@auth_bp.route('/register', methods=['POST'])
+def register():
+    """POST /api/auth/register - Register new user"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return {'error': 'No data provided'}, 400
+        
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+        role = data.get('role', 'VIEWER')
+        
+        if not username or not email or not password:
+            return {'error': 'Username, email, and password required'}, 400
+        
+        # Register user
+        user = AuthService.register_user(username, email, password, role)
+        
+        if not user:
+            return {'error': 'User already exists'}, 409
+        
+        AuditService.log_access(user.id, 'REGISTER', None, None, status_code=201)
+        
+        return {
+            'success': True,
+            'message': f'User {username} registered successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': user.role
+            }
+        }, 201
+        
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}")
+        return {'error': f'Registration failed: {str(e)}'}, 500
+
+
+@auth_bp.route('/refresh', methods=['POST'])
+def refresh_token():
+    """POST /api/auth/refresh - Refresh access token using refresh token"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return {'error': 'No data provided'}, 400
+        
+        refresh_token = data.get('refresh_token')
+        
+        if not refresh_token:
+            return {'error': 'Refresh token required'}, 400
+        
+        # Verify refresh token
+        payload = AuthService.verify_token(refresh_token)
+        
+        if not payload:
+            return {'error': 'Invalid or expired refresh token'}, 401
+        
+        # Generate new access token
+        user_id = payload.get('user_id')
+        user_role = payload.get('role')
+        
+        new_tokens = AuthService.generate_tokens(user_id, user_role)
+        
+        return {
+            'success': True,
+            'access_token': new_tokens['access_token'],
+            'refresh_token': new_tokens['refresh_token']
+        }, 200
+        
+    except Exception as e:
+        logger.error(f"Token refresh error: {str(e)}")
+        return {'error': f'Token refresh failed: {str(e)}'}, 500
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@token_required
+def logout(user_id, user_role):
+    """POST /api/auth/logout - Logout user and revoke token"""
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        
+        if not token:
+            return {'error': 'No token provided'}, 400
+        
+        # Revoke token
+        AuthService.revoke_token(token)
+        
+        # Log logout
+        AuditService.log_access(user_id, 'LOGOUT', None, None, status_code=200)
+        
+        return {
+            'success': True,
+            'message': 'Logged out successfully'
+        }, 200
+        
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
+        return {'error': f'Logout failed: {str(e)}'}, 500
+
+
 # ===== EXISTING ENDPOINTS =====
 
 @fhir_bp.route('/Patient/<patient_id>', methods=['GET'])
@@ -335,3 +487,49 @@ def health_check():
             'GET /api/health'
         ]
     }, 200
+
+
+# ===== ADMIN ENDPOINTS =====
+
+@admin_bp.route('/audit-logs', methods=['GET'])
+@token_required
+@permission_required('*', '*')  # Admin only
+def get_audit_logs(user_id, user_role):
+    """GET /api/admin/audit-logs - Get system audit logs"""
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        resource_type = request.args.get('resource_type')
+        user_filter = request.args.get('user_id', type=int)
+        
+        logs = AuditService.get_access_logs(user_filter, resource_type, limit, offset)
+        
+        return {
+            'success': True,
+            'count': len(logs),
+            'logs': logs
+        }, 200
+        
+    except Exception as e:
+        logger.error(f"Error getting audit logs: {str(e)}")
+        return {'error': 'Failed to retrieve logs'}, 500
+
+
+@admin_bp.route('/user-activity/<int:target_user_id>', methods=['GET'])
+@token_required
+@permission_required('*', '*') # Admin only
+def get_user_activity(user_id, user_role, target_user_id):
+    """GET /api/admin/user-activity/<id> - Get specific user activity"""
+    try:
+        days = request.args.get('days', 30, type=int)
+        
+        activity = AuditService.get_user_activity(target_user_id, days)
+        
+        if not activity:
+            return {'error': 'User not found or no activity'}, 404
+            
+        return activity, 200
+        
+    except Exception as e:
+        logger.error(f"Error getting user activity: {str(e)}")
+        return {'error': 'Failed to retrieve user activity'}, 500

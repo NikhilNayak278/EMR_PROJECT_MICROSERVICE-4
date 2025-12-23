@@ -37,13 +37,7 @@ class AuthService:
            
             logger.info(f"User '{username}' authenticated successfully")
             
-            # Generate tokens
-            tokens = AuthService.generate_tokens(user.id, user.role)
-            
-            return {
-                'user': user.to_dict(),
-                'tokens': tokens
-            }
+            return user
            
         except Exception as e:
             logger.error(f"Error authenticating user: {str(e)}")
@@ -80,7 +74,7 @@ class AuthService:
            
             logger.info(f"User '{username}' registered successfully with role '{role}'")
             
-            return user.to_dict()
+            return user
            
         except Exception as e:
             db.session.rollback()
@@ -160,7 +154,7 @@ class AuthService:
             return None
    
     @staticmethod
-    def revoke_token(token, user_id):
+    def revoke_token(token):
         """Revoke a token by adding it to blacklist"""
         try:
             payload = jwt.decode(
@@ -171,6 +165,7 @@ class AuthService:
            
             jti = payload.get('jti')
             exp_timestamp = payload.get('exp')
+            user_id = payload.get('user_id')
             
             if jti and exp_timestamp:
                 exp = datetime.utcfromtimestamp(exp_timestamp)

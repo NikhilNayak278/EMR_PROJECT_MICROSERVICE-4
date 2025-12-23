@@ -61,14 +61,14 @@ def main():
     if os.getenv('FLASK_ENV') == 'production':
         app.run(
             host='0.0.0.0',
-            port=int(os.getenv('FLASK_RUN_PORT', 5004)),
+            port=int(os.getenv('FLASK_RUN_PORT', 5000)),
             debug=False,
             ssl_context='adhoc'  # Requires pyopenssl
         )
     else:
         app.run(
             host='0.0.0.0',
-            port=int(os.getenv('FLASK_RUN_PORT', 5004)),
+            port=int(os.getenv('FLASK_RUN_PORT', 5000)),
             debug=True
         )
 
