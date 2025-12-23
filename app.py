@@ -7,7 +7,7 @@ from flask import Flask
 from flask_cors import CORS
 from config import config
 from models import db
-from routes import auth_bp, fhir_bp, admin_bp, health_bp
+from routes_extended import auth_bp, fhir_bp, admin_bp, health_bp
 
 
 # Configure logging

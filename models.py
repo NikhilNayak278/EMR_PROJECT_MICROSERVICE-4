@@ -20,7 +20,7 @@ class User(db.Model):
     department = db.Column(db.String(100), nullable=True)
     license_number = db.Column(db.String(100), nullable=True)
     
-    # NEW: Link user to a specific FHIR Patient ID (crucial for PATIENT role)
+    # Link user to a specific FHIR Patient ID (crucial for PATIENT role)
     fhir_patient_id = db.Column(db.String(255), nullable=True, index=True)
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
@@ -39,7 +39,7 @@ class User(db.Model):
             'email': self.email,
             'role': self.role,
             'department': self.department,
-            'fhir_patient_id': self.fhir_patient_id,  # Include in response
+            'fhir_patient_id': self.fhir_patient_id,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
@@ -47,7 +47,10 @@ class User(db.Model):
 
 
 class FHIRResource(db.Model):
-    """Cached FHIR Resources from Harmonization Service"""
+    """
+    Cached FHIR Resources from Harmonization Service (MS3)
+    Supports: Patient, Observation, Condition, MedicationStatement, Procedure, Encounter
+    """
     __tablename__ = 'fhir_resources'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -87,7 +90,10 @@ class FHIRResource(db.Model):
 
 
 class AccessLog(db.Model):
-    """Audit trail for data access"""
+    """
+    Audit trail for all data access
+    Logs all reads, writes, deletions with user, resource, and status information
+    """
     __tablename__ = 'access_logs'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -131,7 +137,10 @@ class AccessLog(db.Model):
 
 
 class TokenBlacklist(db.Model):
-    """Blacklisted JWT tokens for logout"""
+    """
+    Blacklisted JWT tokens for logout
+    Stores revoked tokens to prevent reuse after logout
+    """
     __tablename__ = 'token_blacklist'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -145,14 +154,18 @@ class TokenBlacklist(db.Model):
 
 
 class PermissionMatrix(db.Model):
-    """Permission matrix for role-based access control"""
+    """
+    Permission matrix for role-based access control (RBAC)
+    Defines which roles can perform which actions on which resources
+    Supports wildcard (*) for flexible permission configuration
+    """
     __tablename__ = 'permission_matrix'
     
     id = db.Column(db.Integer, primary_key=True)
     role = db.Column(db.String(50), nullable=False, index=True)  # ADMIN, DOCTOR, NURSE, PATIENT, VIEWER, * (wildcard)
-    resource_type = db.Column(db.String(100), nullable=False)  # Patient, Observation, Condition, * (wildcard)
-    action = db.Column(db.String(50), nullable=False)  # READ, CREATE, UPDATE, DELETE, * (wildcard)
-    can_access_own_data_only = db.Column(db.Boolean, default=False)
+    resource_type = db.Column(db.String(100), nullable=False)  # Patient, Observation, Condition, MedicationStatement, Procedure, Encounter, Bundle, * (wildcard)
+    action = db.Column(db.String(50), nullable=False)  # READ, CREATE, UPDATE, DELETE, WRITE, SEARCH, * (wildcard)
+    can_access_own_data_only = db.Column(db.Boolean, default=False)  # Restrict access to own data only
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     __table_args__ = (
