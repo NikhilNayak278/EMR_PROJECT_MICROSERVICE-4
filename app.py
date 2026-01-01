@@ -7,7 +7,7 @@ from flask import Flask
 from flask_cors import CORS
 from config import config
 from models import db
-from routes_extended import auth_bp, fhir_bp, admin_bp, health_bp
+from routes import fhir_bp, health_bp
 
 
 # Configure logging
@@ -34,12 +34,10 @@ def create_app(config_name=None):
     
     # Configure CORS
     cors_origins = app.config.get('CORS_ORIGINS', ['http://localhost:3000'])
-    CORS(app, resources={r"/api/*": {"origins": cors_origins}})
+    CORS(app, resources={r"/api/*": {"origins": "*"}}) # Open CORS
    
     # Register blueprints
-    app.register_blueprint(auth_bp)
     app.register_blueprint(fhir_bp)
-    app.register_blueprint(admin_bp)
     app.register_blueprint(health_bp)
    
     # Create database tables
@@ -61,14 +59,14 @@ def main():
     if os.getenv('FLASK_ENV') == 'production':
         app.run(
             host='0.0.0.0',
-            port=int(os.getenv('FLASK_RUN_PORT', 5000)),
+            port=int(os.getenv('FLASK_RUN_PORT', 5004)),
             debug=False,
             ssl_context='adhoc'  # Requires pyopenssl
         )
     else:
         app.run(
             host='0.0.0.0',
-            port=int(os.getenv('FLASK_RUN_PORT', 5000)),
+            port=int(os.getenv('FLASK_RUN_PORT', 5004)),
             debug=True
         )
 
