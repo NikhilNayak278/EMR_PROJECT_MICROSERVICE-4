@@ -97,28 +97,27 @@ Authorization: Bearer {{loginAdmin.response.body.access_token}}
 
 ### Get Specific Patient (Requires ID)
 GET {{baseUrl}}/api/fhir/Patient/pat-001
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 
 ### Get Specific Observation (Requires ID)
 GET {{baseUrl}}/api/fhir/Observation/obs-001
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 
 ### Search/List Patients (CORRECTED ENDPOINT)
 # Uses /api/fhir/search instead of /api/fhir/Patient
 GET {{baseUrl}}/api/fhir/search?type=Patient&limit=10
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 
 ### Search/List Observations (CORRECTED ENDPOINT)
 GET {{baseUrl}}/api/fhir/search?type=Observation&limit=20
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 
 ### Search Observations for Specific Patient
 GET {{baseUrl}}/api/fhir/search?type=Observation&patient=pat-001
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
-
+Authorization: Bearer {{token}}
 ### Get Complete Patient Bundle (All records)
 GET {{baseUrl}}/api/fhir/patient/pat-001/complete
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 
 
 ### ============================================
@@ -127,7 +126,7 @@ Authorization: Bearer {{loginDoctor.response.body.access_token}}
 
 ### Upload Transaction Bundle (from MS3)
 POST {{baseUrl}}/api/fhir/bundle/upload
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -150,7 +149,7 @@ Content-Type: application/json
 
 ### Process Document (Trigger MS3 Mapper)
 POST {{baseUrl}}/api/fhir/document/process
-Authorization: Bearer {{loginDoctor.response.body.access_token}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -168,11 +167,10 @@ Content-Type: application/json
 
 ### Get Audit Logs
 GET {{baseUrl}}/api/admin/audit-logs?limit=20
-Authorization: Bearer {{loginAdmin.response.body.access_token}}
-
+Authorization: Bearer {{token}}
 ### Get User Activity
 GET {{baseUrl}}/api/admin/user-activity/1
-Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Authorization: Bearer {{token}}
 
 ### Delete Patient Data (WARNING: IRREVERSIBLE)
 # DELETE {{baseUrl}}/api/fhir/patient/pat-001
