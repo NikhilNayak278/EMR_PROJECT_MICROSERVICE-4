@@ -16,9 +16,114 @@ health_bp = Blueprint("health", __name__, url_prefix="/health")
 def health_check():
     return jsonify({"status": "healthy", "service": "Data Access Service"}), 200
 
-# --- Authentication Routes (REMOVED) ---
+@fhir_bp.route("/auth/login", methods=["POST"])
+def login():
+    """
+    Mock authentication endpoint.
+    Returns a dummy token.
+    """
+    return jsonify({"tokens": {"access": "mock-token-123"}}), 200
 
-# --- FHIR Routes ---
+@fhir_bp.route("/search", methods=["GET"])
+def search_generic():
+    """
+    Generic search endpoint to handle dinesh-microservice's /api/fhir/search calls.
+    Redirects or proxies to resource-specific search.
+    """
+    resource_type = request.args.get("type")
+    if not resource_type:
+        return jsonify({"error": "Missing 'type' parameter"}), 400
+    
+    # Map 'Patient' -> search_patients
+    if resource_type == "Patient":
+        return search_patients()
+    
+    # Fallback for other resources (Observation, etc) - reuse generic logic
+    try:
+        filters = request.args.to_dict()
+        if "type" in filters: del filters["type"] # Remove meta-param
+        
+        limit = int(request.args.get("_count", request.args.get("limit", 20)))
+        offset = int(request.args.get("_offset", 0))
+        
+        result = FHIRService.search_resources(resource_type, filters, limit, offset)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@fhir_bp.route("/confirm", methods=["POST"])
+def confirm_bundle():
+    """
+    Endpoint to receive a confirmed FHIR Bundle.
+    Splits the bundle and stores individual resources.
+    Generates a unique Patient ID and links all resources to it.
+    Maps pseudonym_id from request.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Missing JSON body"}), 400
+        
+        # Extract pseudonym_id
+        pseudonym_id = data.get("pseudonymId") # From dinesh_EMR injection
+        
+        bundle_type = data.get("resourceType")
+        if bundle_type != "Bundle":
+            # Fallback if single resource
+             FHIRService.store_fhir_resource(data, pseudonym_id=pseudonym_id)
+             return jsonify({"status": "Stored single resource"}), 201
+
+        entries = data.get("entry", [])
+        
+        # 1. Find Patient to generate the Master ID
+        generated_patient_id = None
+        patient_entry = None
+        
+        for entry in entries:
+            res = entry.get("resource", {})
+            if res.get("resourceType") == "Patient":
+                patient_entry = res
+                break
+        
+        if patient_entry:
+            # Store Patient first, which generates the ID
+            generated_patient_id = FHIRService.store_fhir_resource(patient_entry, pseudonym_id=pseudonym_id)
+        else:
+            # Fallback: Generate one if no patient resource found (unlikely in this flow)
+            import uuid
+            generated_patient_id = str(uuid.uuid4())
+
+        # 2. Store all resources linked to this Patient ID
+        count = 0
+        for entry in entries:
+            res = entry.get("resource", {})
+            rtype = res.get("resourceType")
+            
+            if rtype == "Patient":
+                continue # Already handled
+                
+            # Update references to the new Patient ID
+            # Assuming standard "subject": {"reference": "Patient/..."}
+            if "subject" in res and "reference" in res["subject"]:
+                ref = res["subject"]["reference"]
+                if ref.startswith("Patient/"):
+                    res["subject"]["reference"] = f"Patient/{generated_patient_id}"
+            
+            # Also update "patient" field if present (e.g. some resources use 'patient')
+            if "patient" in res and "reference" in res["patient"]:
+                 ref = res["patient"]["reference"]
+                 if ref.startswith("Patient/"):
+                    res["patient"]["reference"] = f"Patient/{generated_patient_id}"
+
+            FHIRService.store_fhir_resource(res, patient_fhir_id=generated_patient_id, pseudonym_id=pseudonym_id)
+            count += 1
+
+        return jsonify({"status": "success", "patient_id": generated_patient_id, "resources_stored": count + 1}), 201
+
+    except Exception as e:
+         logger.error(f"Confirm Error: {e}")
+         return jsonify({"error": str(e)}), 500
+
 
 @fhir_bp.route("/Patient", methods=["GET"])
 def search_patients():

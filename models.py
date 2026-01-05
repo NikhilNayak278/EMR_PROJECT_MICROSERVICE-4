@@ -11,6 +11,9 @@ class FHIRResource(db.Model):
     __tablename__ = 'fhir_resources'
     
     id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    # fhir_id: User requested removal, but DB has NOT NULL constraint. 
+    # We will treat this as an internal unique row identifier (UUID) & satisfy DB constraint.
     fhir_id = db.Column(db.String(255), unique=True, nullable=False, index=True)
     resource_type = db.Column(db.String(100), nullable=False, index=True)  # Patient, Observation, Condition, etc.
     patient_fhir_id = db.Column(db.String(255), nullable=True, index=True)  # Link to patient
