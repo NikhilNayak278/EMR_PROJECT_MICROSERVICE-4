@@ -142,7 +142,7 @@ class FHIRService:
         try:
             # Get patient resource
             patient = FHIRResource.query.filter_by(
-                fhir_id=patient_fhir_id,
+                patient_fhir_id=patient_fhir_id,  # Changed from fhir_id to patient_fhir_id
                 resource_type='Patient'
             ).first()
            
@@ -168,7 +168,7 @@ class FHIRService:
                 'total': 1 + len(observations) + len(conditions),
                 'entry': [
                     {
-                        'resource': patient.data,
+                        'resource': {**patient.data, "pseudonymId": patient.pseudonym_id} if patient.pseudonym_id else patient.data,
                         'fullUrl': f"Patient/{patient.fhir_id}"
                     }
                 ]
@@ -202,8 +202,10 @@ class FHIRService:
             query = FHIRResource.query.filter_by(resource_type=resource_type)
            
             if filters:
-                if 'patient_fhir_id' in filters and filters['patient_fhir_id']:
-                    query = query.filter_by(patient_fhir_id=filters['patient_fhir_id'])
+                # Support both 'patient' (FHIR standard) and 'patient_fhir_id' (internal)
+                patient_filter = filters.get('patient_fhir_id') or filters.get('patient')
+                if patient_filter:
+                    query = query.filter_by(patient_fhir_id=patient_filter)
            
             total = query.count()
             resources = query.offset(offset).limit(limit).all()

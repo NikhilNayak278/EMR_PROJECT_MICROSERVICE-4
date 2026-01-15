@@ -135,7 +135,7 @@ def search_patients():
         offset = int(request.args.get("_offset", 0))
 
         result = FHIRService.search_resources("Patient", filters, limit, offset)
-
+        print(result)
         return jsonify(result), 200
 
     except Exception as e:
@@ -151,10 +151,26 @@ def get_patient(patient_id):
         if not bundle:
             return jsonify({"error": "Patient not found"}), 404
             
+        print(bundle)
         return jsonify(bundle), 200
 
     except Exception as e:
         logger.error(f"Error retrieving patient: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@fhir_bp.route("/Condition", methods=["GET"])
+def search_conditions():
+    try:
+        filters = request.args.to_dict()
+        
+        limit = int(request.args.get("_count", 100))
+        offset = int(request.args.get("_offset", 0))
+        
+        result = FHIRService.search_resources("Condition", filters, limit, offset)
+        
+        return jsonify(result), 200
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
