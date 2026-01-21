@@ -225,6 +225,31 @@ class FHIRService:
             }
    
     @staticmethod
+    def search_conditions_by_text(query_text, limit=100):
+        """
+        Search Conditions by text in 'code.text' or 'code.coding.display'.
+        Uses PostgreSQL JSONB text search.
+        """
+        try:
+            from sqlalchemy import or_, cast, String
+            
+            search_term = f"%{query_text}%"
+            
+            # Simple filtered query on the JSONB 'data' column
+            # We cast to string to search the text representation of the JSON
+            # This is a broad but effective search for text within the resource
+            results = FHIRResource.query.filter(
+                FHIRResource.resource_type == 'Condition',
+                cast(FHIRResource.data, String).ilike(search_term)
+            ).limit(limit).all()
+            
+            return [r.data for r in results]
+            
+        except Exception as e:
+            logger.error(f"Error searching conditions: {e}")
+            return []
+
+    @staticmethod
     def delete_patient_data(patient_fhir_id):
         """Delete all data for a patient (for right to be forgotten)"""
         try:

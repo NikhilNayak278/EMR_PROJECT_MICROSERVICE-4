@@ -1,8 +1,11 @@
 from flask import Blueprint, request, jsonify, current_app
 from fhir_service import FHIRService
-from models import db
+from models import db, User
 import logging
 import time
+import jwt
+import datetime
+from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +22,91 @@ def health_check():
 @fhir_bp.route("/auth/login", methods=["POST"])
 def login():
     """
-    Mock authentication endpoint.
-    Returns a dummy token.
+    Authenticate and return a valid JWT signed with 'emr-secure-key-2025'.
     """
-    return jsonify({"tokens": {"access": "mock-token-123"}}), 200
+    try:
+        data = request.get_json() or {}
+        username = data.get("username")
+        password = data.get("password")
+
+        user = User.query.filter_by(username=username).first()
+
+        if not user or not check_password_hash(user.password_hash, password):
+             return jsonify({"error": "Invalid credentials"}), 401
+
+        # Generate Payload
+        # Expiration: 24 hours
+        expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        
+        payload = {
+            "sub": user.username,
+            "role": user.role, 
+            "can_upload": user.can_upload,
+            "exp": expiration,
+            "iat": datetime.datetime.utcnow()
+        }
+
+        # Sign with the same key used in dinesh_EMR-Application-Layer
+        SECRET_KEY = "emr-secure-key-2025"
+        
+        token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+        
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
+
+        return jsonify({"tokens": {"access": token}}), 200
+
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@fhir_bp.route("/auth/users", methods=["GET"])
+def get_users():
+    """Return list of users."""
+    try:
+        users = User.query.all()
+        return jsonify([u.to_dict() for u in users]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@fhir_bp.route("/auth/users", methods=["POST"])
+def create_user():
+    """Create a new user."""
+    try:
+        data = request.get_json()
+        if not data or not data.get("username") or not data.get("password"):
+             return jsonify({"error": "Missing username or password"}), 400
+        
+        if User.query.filter_by(username=data["username"]).first():
+             return jsonify({"error": "Username already exists"}), 400
+
+        new_user = User(
+            username=data["username"],
+            password_hash=generate_password_hash(data["password"]),
+            role=data.get("role", "user"),
+            can_upload=data.get("can_upload", False),
+            created_at=datetime.datetime.utcnow()
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        
+        return jsonify({"status": "User created", "id": new_user.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@fhir_bp.route("/auth/users/<int:user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    """Delete a user by ID."""
+    try:
+        user = User.query.get(user_id)
+        if user:
+            db.session.delete(user)
+            db.session.commit()
+        return jsonify({"status": "User deleted"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @fhir_bp.route("/search", methods=["GET"])
 def search_generic():
@@ -163,9 +247,15 @@ def get_patient(patient_id):
 def search_conditions():
     try:
         filters = request.args.to_dict()
+        name_query = filters.get("name")
         
         limit = int(request.args.get("_count", 100))
         offset = int(request.args.get("_offset", 0))
+        
+        if name_query:
+            # specialized search
+            results = FHIRService.search_conditions_by_text(name_query, limit)
+            return jsonify({"resources": results, "total": len(results)}), 200
         
         result = FHIRService.search_resources("Condition", filters, limit, offset)
         

@@ -41,3 +41,7 @@ Thumbs.db
 # ---- Docker ----
 # Ignore local volumes or build artifacts (if any)
 docker-data/
+
+db_schema.txt
+inspect_db.py
+restart_service.ps1
